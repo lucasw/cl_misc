@@ -44,3 +44,28 @@ Which nvidia version?  304.117
 
   [ 2932.786585] [ERROR]Aborting because fallback start is disabled.
 
+
+Trying nvidia-331, install is long process
+
+Rebooted and now sudo glxinfo works, but now optirun clinfo gives the same info as plain clinfo.
+
+sudo apt-get install ocl-icd-dev
+
+No improvement
+
+
+/etc/OpenCL/vendors/nvidia.icd is missing?
+
+No symlink to /usr/lib/x86_64-linux-gnu/libOpenCL.so, there is just a so.1, so.1.0, so.1.0.0
+
+sudo ln -s /usr/lib/x86_64-linux-gnu/libOpenCL.so.1 /usr/lib/x86_64-linux-gnu/libOpenCL.so
+
+But the clinfo message was already looking at so.1
+
+give up on nvidia, try intel
+
+Intel OpenCL
+------------
+
+
+
