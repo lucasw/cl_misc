@@ -51,6 +51,22 @@ int main(void)
 
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], 0, &err);
+   
+    const int wd = 128;
+    const int ht = 128;
+    float im[wd * ht];
+
+    cl::Image2D clImage = cl::Image2D(
+        context,
+         CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
+         cl::ImageFormat(CL_R, CL_FLOAT),  // single channel
+         wd,
+         ht,
+         0,
+         (void*) &im, // some random memory
+         &err
+         );
+
     queue.enqueueNDRangeKernel(
         kernel, 
         cl::NullRange,
