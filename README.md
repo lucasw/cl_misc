@@ -184,3 +184,25 @@ All it appears to be showing is the quad core cpu, so it isn't that exciting.
 
 Try on another pc next.
 
+
+---
+
+Try installing libnuma-dev, some pages suggest it
+
+What about the opencl runtime from Intel?
+
+opencl_runtime_14.1_x64_4.4.0.117.tgz
+
+The install-cpu+mic.sh script is for Xeon Phi coprocessor, which I don't have.  Should the HD 3000 graphics have a gpu?
+
+This page says no:
+http://www.intel.com/support/graphics/sb/CS-033757.htm
+
+Move on to making some opencl test program
+
+OpenCL test program
+-------------------
+
+Start with the one in the cl.hpp comments.
+
+

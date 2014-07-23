@@ -96,16 +96,19 @@ catkin_package(
 # )
 
 ## Declare a cpp executable
-# add_executable(cl_misc_node src/cl_misc_node.cpp)
+add_executable(cl_misc
+  src/cl_misc.cpp
+)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(cl_misc_node cl_misc_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
-# target_link_libraries(cl_misc_node
+target_link_libraries(cl_misc
+  OpenCL
 #   ${catkin_LIBRARIES}
-# )
+)
 
 #############
 ## Install ##
