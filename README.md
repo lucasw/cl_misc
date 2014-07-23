@@ -206,3 +206,5 @@ OpenCL test program
 Start with the one in the cl.hpp comments.
 
 
+http://www.khronos.org/registry/cl/specs/opencl-cplusplus-1.2.pdf
+
