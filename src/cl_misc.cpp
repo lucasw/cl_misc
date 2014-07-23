@@ -47,25 +47,45 @@ int main(void)
     cl::Program program_ = cl::Program(context, source);
     program_.build(devices);
 
-    cl::Kernel kernel(program_, "hello", &err);
 
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], 0, &err);
    
-    const int wd = 128;
-    const int ht = 128;
-    float im[wd * ht];
+    const int wd = 16;
+    const int ht = 16;
+    unsigned char im[wd * ht];
+    
+    for (int i = 0; i < ht; i++) {
+    for (int j = 0; j < ht; j++) {
+      std::cout << "   " << int( im[i*wd + j] );
+    }
+      std::cout << std::endl;
+    }
 
-    cl::Image2D clImage = cl::Image2D(
+    cl::Image2D cl_image = cl::Image2D(
         context,
          CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR,
-         cl::ImageFormat(CL_R, CL_FLOAT),  // single channel
+         cl::ImageFormat(CL_R, CL_UNSIGNED_INT8),  // single channel
          wd,
          ht,
          0,
          (void*) &im, // some random memory
          &err
          );
+
+    unsigned char im_out[wd * ht];
+    cl::Buffer cl_result = cl::Buffer(
+        context, 
+        CL_MEM_WRITE_ONLY, // | CL_MEM_COPY_HOST_PTR,
+        sizeof(unsigned char) * wd * ht //,
+        //im_out
+        );
+    
+    //std::cout << "made buffer" << std::endl;
+
+    cl::Kernel kernel(program_, "hello", &err);
+    kernel.setArg(0, cl_image);
+    kernel.setArg(1, cl_result);
 
     queue.enqueueNDRangeKernel(
         kernel, 
@@ -75,7 +95,26 @@ int main(void)
         NULL,
         &event); 
 
-    event.wait();
+    //float 
+    queue.enqueueReadBuffer(
+        cl_result, 
+        CL_TRUE, // blocking read 
+        0, 
+        sizeof(unsigned char) * wd * ht, 
+        im_out //,
+        //NULL,
+        //&event
+        );
+           
+    //event.wait();
+ 
+    std::cout << "output " << std::endl;
+    for (int i = 0; i < ht; i++) {
+    for (int j = 0; j < ht; j++) {
+      std::cout << "   " << int( im_out[i*wd + j] );
+    }
+      std::cout << std::endl;
+    }
   }
   catch (cl::Error err) {
     std::cerr 
