@@ -106,17 +106,16 @@ int main(void)
         NULL, //(void*) &im, // some random memory
         &err
         );
+      
+    kernel.setArg(0, cl_image);
+    kernel.setArg(1, cl_result);
+    cl::NDRange global_size(wd, ht);
+    cl::NDRange local_size(16, 16);
 
     //for (int i = 0; i < 100; i++)
     while (true) 
     {
       
-      kernel.setArg(0, cl_image);
-      kernel.setArg(1, cl_result);
-
-      cl::NDRange global_size(wd, ht);
-      cl::NDRange local_size(1, 1);
-
       queue.enqueueWriteImage(
           cl_image, 
           CL_TRUE, // blocking write 
