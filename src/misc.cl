@@ -3,12 +3,18 @@ __constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE |
 
 __kernel void hello(
     __read_only image2d_t image,
-    __global uint8* result
+    __read_only image2d_t im_out
+    //__global uint8* result
     )
 { 
   
-  //const int2 pos = {get_global_id(0), get_global_id(1)};
+  const int2 pos = {get_global_id(0), get_global_id(1)};
+ 
+  uint4 val = read_imageui(image, sampler, pos);
   
+  //const int2 pos2 = {get_global_id(0) + 1, get_global_id(1)};
+
+  write_imageui(im_out, pos, val);
   //result[ pos.x + pos.y * get_global_size(0)] = 3;
   
   // messing around with writing to output array 
