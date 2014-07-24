@@ -5,6 +5,10 @@
 #include <iostream>
 #include <fstream>
 
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
+
 int main(void)
 {
   cl_int err = CL_SUCCESS;
@@ -51,15 +55,23 @@ int main(void)
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], 0, &err);
    
-    const int wd = 16;
-    const int ht = 16;
+    const int wd = 512;
+    const int ht = 512;
+
+    cv::Mat imc = cv::Mat(cv::Size(wd,ht), CV_8UC1, cv::Scalar::all(0));
+    cv::circle(imc, cv::Point(wd/2, ht/2), 5, cv::Scalar::all(255), -1);
+
     unsigned char im[wd * ht];
-    
+   
+    if (false) {
     for (int i = 0; i < ht; i++) {
     for (int j = 0; j < ht; j++) {
-      std::cout << "   " << int( im[i*wd + j] );
+      int val =  int( imc.data[i*imc.step + j] );
+      im[wd * i + j] = val;
+      std::cout << "   " << val; 
     }
       std::cout << std::endl;
+    }
     }
     
     //unsigned char im_out[wd * ht];
@@ -95,7 +107,8 @@ int main(void)
         &err
         );
 
-    for (int i = 0; i < 1; i++) {
+    //for (int i = 0; i < 100; i++)
+    while (true) {
       
       kernel.setArg(0, cl_image);
       kernel.setArg(1, cl_result);
@@ -132,16 +145,23 @@ int main(void)
           //NULL,
           //&event
           );
-      
+    
+      cv::Mat imt = cv::Mat(cv::Size(wd,ht), CV_8UC1, im);
+      cv::imshow("processed image", imt);
+      int ch = cv::waitKey(5);
+
+      if (ch == 'q') break;
       //ping = !ping;
     } // for loop      
- 
+
+    if (false) {
     std::cout << "output " << std::endl;
     for (int i = 0; i < ht; i++) {
     for (int j = 0; j < ht; j++) {
       std::cout << "   " << int( im[i*wd + j] );
     }
       std::cout << std::endl;
+    }
     }
   }
   catch (cl::Error err) {
@@ -154,5 +174,7 @@ int main(void)
       << std::endl;
     return EXIT_FAILURE;
   }
+  cv::waitKey(0);
+      //ping = !ping;
   return EXIT_SUCCESS;
 }

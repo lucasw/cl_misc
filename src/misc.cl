@@ -10,9 +10,9 @@ __kernel void hello(
   const int2 pos = {get_global_id(0), get_global_id(1)};
   uint4 val = read_imageui(image, sampler, pos);
   
-  const int2 pos2 = {get_global_id(0) + 1, get_global_id(1)};
+  const int2 pos2 = {get_global_id(0), get_global_id(1) + 1};
   uint4 val2 = read_imageui(image, sampler, pos2);
 
-  write_imageui(im_out, pos, val - val2/2); // (val + val2)/2 );
+  write_imageui(im_out, pos, val/2 + val2/2); // (val + val2)/2 );
 };
 
