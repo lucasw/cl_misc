@@ -59,19 +59,19 @@ int main(void)
     const int ht = 512;
 
     cv::Mat imc = cv::Mat(cv::Size(wd,ht), CV_8UC1, cv::Scalar::all(0));
-    cv::circle(imc, cv::Point(wd/2, ht/2), 5, cv::Scalar::all(255), -1);
-
+    cv::circle(imc, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(255), -1);
+    
+    cv::imshow("orig", imc);
     unsigned char im[wd * ht];
    
-    if (false) {
     for (int i = 0; i < ht; i++) {
     for (int j = 0; j < ht; j++) {
       int val =  int( imc.data[i*imc.step + j] );
       im[wd * i + j] = val;
-      std::cout << "   " << val; 
+      //if ((j%8 == 0) && (i%8 == 0)) 
+      //  std::cout << "   " << val; 
     }
-      std::cout << std::endl;
-    }
+      //std::cout << std::endl;
     }
     
     //unsigned char im_out[wd * ht];
@@ -108,7 +108,8 @@ int main(void)
         );
 
     //for (int i = 0; i < 100; i++)
-    while (true) {
+    while (true) 
+    {
       
       kernel.setArg(0, cl_image);
       kernel.setArg(1, cl_result);
