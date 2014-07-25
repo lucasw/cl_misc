@@ -9,6 +9,52 @@
 #include <opencv2/highgui/highgui.hpp>
 
 
+// load the opencl program from the disk
+// TBD optionally provide the old program, if it hasn't changed
+// then don't rebuild it
+bool loadProg(
+    std::vector<cl::Device>& devices, 
+    cl::Context& context,
+    cl::Program& program, 
+    std::string cl_name = "misc.cl"
+    )
+{
+
+  try {
+    std::ifstream cl_file;
+    cl_file.open(cl_name.c_str()); //, std::ios::in);
+    if (!cl_file.is_open()) {
+      std::cerr << "Could not open " << cl_name.c_str() << std::endl;
+      return false;
+    }
+    std::string big_line;
+    std::string line;
+    while (std::getline(cl_file, line)) {
+      big_line += line + "\n"; 
+    }
+    //std::cout << big_line << std::endl;
+
+    cl::Program::Sources source(
+        1,
+        std::make_pair(big_line.c_str(), strlen( big_line.c_str() ))
+        );
+
+    program = cl::Program(context, source);
+    cl_int rv = program.build(devices);
+    return rv;
+  } 
+  catch (cl::Error err) {
+    std::cerr 
+      << "ERROR: "
+      << err.what()
+      << "("
+      << err.err()
+      << ")"
+      << std::endl;
+    return err.err();
+  }
+}
+
 int main(void)
 {
   cv::VideoCapture cap(0);
@@ -35,27 +81,6 @@ int main(void)
     cl::Context context(CL_DEVICE_TYPE_CPU, properties); 
 
     std::vector<cl::Device> devices = context.getInfo<CL_CONTEXT_DEVICES>();
-
-    std::string cl_name = "misc.cl";
-    std::ifstream cl_file;
-    cl_file.open(cl_name.c_str()); //, std::ios::in);
-    if (!cl_file.is_open()) {
-      std::cerr << "Could not open " << cl_name.c_str() << std::endl;
-      return EXIT_FAILURE;
-    }
-    std::string big_line;
-    std::string line;
-    while (std::getline(cl_file, line)) {
-      big_line += line + "\n"; 
-    }
-    std::cout << big_line << std::endl;
-
-    cl::Program::Sources source(
-        1,
-        std::make_pair(big_line.c_str(), strlen( big_line.c_str() ))
-        );
-    cl::Program program_ = cl::Program(context, source);
-    program_.build(devices);
 
 
     cl::Event event;
@@ -90,10 +115,8 @@ int main(void)
     cl::size_t<3> region;
     region[0] = wd; region[1] = ht; region[2] = 1;
     
-    cl::Kernel kernel(program_, "hello", &err);
-
-    //bool ping = true;
-
+    
+    //std::vector<cl::Image2D>
     cl::Image2D cl_image = cl::Image2D(
         context,
         CL_MEM_READ_ONLY, // | CL_MEM_COPY_HOST_PTR,
@@ -116,9 +139,6 @@ int main(void)
         &err
         );
       
-    kernel.setArg(0, cl_image);
-    kernel.setArg(1, cl_result);
-
     cl::NDRange global_size(wd, ht);
     // local size doesn't mean much without having local memory
     // the null range causes automatic setting of local size,
@@ -133,7 +153,9 @@ int main(void)
     //cl::NDRange offset(0, 0);
     cl::NDRange offset = cl::NullRange; 
 
-    //for (int i = 0; i < 300; i++)
+    cl::Kernel kernel;
+    
+    int i = 0;
     while (true) 
     {
       cap >> imc;
@@ -146,6 +168,18 @@ int main(void)
       }
       cv::Mat gray;
       cv::cvtColor(imc, gray, CV_BGR2GRAY);
+      
+      // only do this intermittently
+      if (i % 10 == 0) {
+        cl::Program program;
+        if (loadProg(devices, context, program) != CL_SUCCESS) { 
+          std::cerr << "bad program" << std::endl;
+          continue;
+        }
+        kernel = cl::Kernel(program, "hello", &err);
+        kernel.setArg(0, cl_image);
+        kernel.setArg(1, cl_result);
+      }
 
       queue.enqueueWriteImage(
           cl_image, 
@@ -157,7 +191,8 @@ int main(void)
           //NULL,
           //&event
           );
-       
+      
+      
       queue.enqueueNDRangeKernel(
           kernel, 
           offset,
@@ -182,9 +217,12 @@ int main(void)
       int ch = cv::waitKey(5);
 
       if (ch == 'q') break;
-      //ping = !ping;
+
+      i++;
     } // for loop      
 
+
+    ////
     if (false) {
     std::cout << "output " << std::endl;
     for (int i = 0; i < ht; i++) {
@@ -194,6 +232,7 @@ int main(void)
       std::cout << std::endl;
     }
     }
+    ////
   }
   catch (cl::Error err) {
     std::cerr 
