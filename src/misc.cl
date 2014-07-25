@@ -14,6 +14,7 @@ __kernel void hello(
   uint4 val2 = read_imageui(image, sampler, pos2);
 
   const int fr = 4;
-  write_imageui(im_out, pos, get_local_id(0)*fr + get_local_id(1)*fr); // (val + val2)/2 );
+  write_imageui(im_out, pos, 8 * (val - val2)   );
+  //write_imageui(im_out, pos, get_local_id(0)*fr + get_local_id(1)*fr); // (val + val2)/2 );
 };
 

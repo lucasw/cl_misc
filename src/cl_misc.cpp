@@ -11,6 +11,12 @@
 
 int main(void)
 {
+  cv::VideoCapture cap(0);
+  if (!cap.isOpened()) {
+    std::cerr << "could not open /dev/video0" << std::endl;
+    return -1;
+  }
+
   cl_int err = CL_SUCCESS;
   try {
 
@@ -55,12 +61,15 @@ int main(void)
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], 0, &err);
    
-    const int wd = 512;
-    const int ht = 512;
+    //const int wd = 512;
+    //const int ht = 512;
+    //cv::Mat imc = cv::Mat(cv::Size(wd,ht), CV_8UC1, cv::Scalar::all(0));
+    //cv::circle(imc, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(255), -1);
+    cv::Mat imc;
+    cap >> imc;
+    const int wd = imc.cols;
+    const int ht = imc.rows;
 
-    cv::Mat imc = cv::Mat(cv::Size(wd,ht), CV_8UC1, cv::Scalar::all(0));
-    cv::circle(imc, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(255), -1);
-    
     cv::imshow("orig", imc);
     unsigned char im[wd * ht];
    
@@ -124,17 +133,27 @@ int main(void)
     //cl::NDRange offset(0, 0);
     cl::NDRange offset = cl::NullRange; 
 
-    for (int i = 0; i < 300; i++)
-    //while (true) 
+    //for (int i = 0; i < 300; i++)
+    while (true) 
     {
-      
+      cap >> imc;
+      if ((imc.rows != ht) || 
+          (imc.cols != wd)) {
+        std::cerr << "bad image " << imc.cols << " " << imc.rows 
+            << " != " << wd << " " << ht
+            << std::endl;
+        continue;
+      }
+      cv::Mat gray;
+      cv::cvtColor(imc, gray, CV_BGR2GRAY);
+
       queue.enqueueWriteImage(
           cl_image, 
           CL_TRUE, // blocking write 
           origin,
           region,
           0,0,
-          im //,
+          gray.data //,
           //NULL,
           //&event
           );
