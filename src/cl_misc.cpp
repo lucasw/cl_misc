@@ -109,11 +109,23 @@ int main(void)
       
     kernel.setArg(0, cl_image);
     kernel.setArg(1, cl_result);
-    cl::NDRange global_size(wd, ht);
-    cl::NDRange local_size(16, 16);
 
-    //for (int i = 0; i < 100; i++)
-    while (true) 
+    cl::NDRange global_size(wd, ht);
+    // local size doesn't mean much without having local memory
+    // the null range causes automatic setting of local size,
+    // and because the cpu has four cores it looks like it sets the
+    // local size to be the global_size divided by 3 (leaving 1 core free for other tasks)
+    // though other times it looks like sets the local size to the full size
+    //cl::NDRange local_size= cl::NullRange; 
+    cl::NDRange local_size(16, 16);
+    // this is just a global offset, don't think global size has to shrink
+    // by same amount
+    // Null and 0,0 should be the same
+    //cl::NDRange offset(0, 0);
+    cl::NDRange offset = cl::NullRange; 
+
+    for (int i = 0; i < 300; i++)
+    //while (true) 
     {
       
       queue.enqueueWriteImage(
@@ -129,7 +141,7 @@ int main(void)
        
       queue.enqueueNDRangeKernel(
           kernel, 
-          cl::NullRange,
+          offset,
           global_size,
           local_size,
           NULL,
@@ -174,7 +186,7 @@ int main(void)
       << std::endl;
     return EXIT_FAILURE;
   }
-  cv::waitKey(0);
+  //cv::waitKey(0);
       //ping = !ping;
   return EXIT_SUCCESS;
 }

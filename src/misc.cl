@@ -13,6 +13,7 @@ __kernel void hello(
   const int2 pos2 = {get_global_id(0), get_global_id(1) + 1};
   uint4 val2 = read_imageui(image, sampler, pos2);
 
-  write_imageui(im_out, pos, val/2 + val2/2); // (val + val2)/2 );
+  const int fr = 4;
+  write_imageui(im_out, pos, get_local_id(0)*fr + get_local_id(1)*fr); // (val + val2)/2 );
 };
 
