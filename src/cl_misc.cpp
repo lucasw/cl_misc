@@ -95,7 +95,6 @@ int main(void)
     const int wd = imc.cols;
     const int ht = imc.rows;
 
-    cv::imshow("orig", imc);
     unsigned char im[wd * ht];
    
     for (int i = 0; i < ht; i++) {
@@ -154,7 +153,8 @@ int main(void)
     cl::NDRange offset = cl::NullRange; 
 
     cl::Kernel kernel;
-    
+    bool loaded_one_good_program = false;
+
     int i = 0;
     while (true) 
     {
@@ -172,14 +172,16 @@ int main(void)
       // only do this intermittently
       if (i % 10 == 0) {
         cl::Program program;
-        if (loadProg(devices, context, program) != CL_SUCCESS) { 
-          std::cerr << "bad program" << std::endl;
-          continue;
+        if (loadProg(devices, context, program) == CL_SUCCESS) { 
+          //std::cerr << "bad program" << std::endl;
+          kernel = cl::Kernel(program, "hello", &err);
+          kernel.setArg(0, cl_image);
+          kernel.setArg(1, cl_result);
+          loaded_one_good_program = true;
         }
-        kernel = cl::Kernel(program, "hello", &err);
-        kernel.setArg(0, cl_image);
-        kernel.setArg(1, cl_result);
       }
+      if (!loaded_one_good_program) 
+        continue;
 
       queue.enqueueWriteImage(
           cl_image, 
