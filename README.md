@@ -14,6 +14,7 @@ or Intel HD 3000
 Need to use optirun to use Nvidia?
 
 Which nvidia version?  304.117
+```
   dpkg -l | grep nvidia
   ii  bumblebee-nvidia                                      3.2.1-5                                             amd64        NVIDIA Optimus support using the proprietary NVIDIA driver
   ii  nvidia-304                                            304.117-0ubuntu1                                    amd64        NVIDIA legacy binary driver - version 304.117
@@ -29,11 +30,12 @@ Which nvidia version?  304.117
   ii  nvidia-opencl-icd-304                                 304.117-0ubuntu1                                    amd64        NVIDIA OpenCL ICD
   ii  opencl-headers                                        1.2-2013.10.23-1                                    all          OpenCL (Open Computing Language) header files
   ii  unity-scope-openclipart                               0.1+13.10.20130723-0ubuntu1                         all          OpenClipArt scope for Unity
+```
 
 
+clinfo isn't looking too good:
 
- clinfo isn't looking too good:
-
+```
   sudo apt-get install clinfo
 
   $ clinfo
@@ -43,7 +45,7 @@ Which nvidia version?  304.117
   [ 2932.786458] [ERROR]Cannot access secondary GPU - error: [XORG] (EE) NVIDIA(0): Failed to initialize the NVIDIA GPU at PCI:1:0:0.  Please
 
   [ 2932.786585] [ERROR]Aborting because fallback start is disabled.
-
+```
 
 Trying nvidia-331, install is long process
 
@@ -58,7 +60,9 @@ No improvement
 
 No symlink to /usr/lib/x86_64-linux-gnu/libOpenCL.so, there is just a so.1, so.1.0, so.1.0.0
 
+```
 sudo ln -s /usr/lib/x86_64-linux-gnu/libOpenCL.so.1 /usr/lib/x86_64-linux-gnu/libOpenCL.so
+```
 
 But the clinfo message was already looking at so.1
 
@@ -72,13 +76,14 @@ intel_sdk_for_ocl_applications_2014_ubuntu_4.4.0.117_x64.tgz
 
 ran install script
 
-
+```
 (Reading database ... 486473 files and directories currently installed.)
 Preparing to unpack opencl-1.2-base-4.4.0.117-1.x86_64.deb ...
 Unpacking opencl-base (1.2-4.4.0.117) over (1.2-4.4.0.117) ...
 Setting up opencl-base (1.2-4.4.0.117) ...
 /var/lib/dpkg/info/opencl-base.postinst: 2: /var/lib/dpkg/info/opencl-base.postinst: [[: not found
 update-alternatives: priority is out of range
+```
 
 It is trying to send a large negative number to update-alternatives
 
@@ -86,9 +91,11 @@ It is trying to send a large negative number to update-alternatives
 
 But get  sudo dpkg -i  opencl-1.2-intel-cpu-4.4.0.117-1.x86_64.deb opencl-1.2-devel-4.4.0.117-1.x86_64.deb opencl-1.2-intel-devel-4.4.0.117-1.x86_64.deb opencl-1.2-intel-devel-android-4.4.0.117-1.x86_64.deb 
 
+```
 dpkg: dependency problems prevent configuration of opencl-intel-cpu:
  opencl-intel-cpu depends on opencl-base (>= 1.2-4.4.0.117); however:
    Package opencl-base is not configured yet.
+```
 
 How does it know whether it is configured?
 
@@ -99,6 +106,7 @@ http://xfanzone.me/fixing-opencl-deb.html
 
 Had to remove some CL libs and includes that were left over from previous failed installs, then the install script works!
 
+```
   clinfo
   Number of platforms:         1
     Platform Profile:        FULL_PROFILE
@@ -180,6 +188,8 @@ Had to remove some CL libs and includes that were left over from previous failed
     Profile:           FULL_PROFILE
     Version:           OpenCL 1.2 (Build 117)
     Extensions:          cl_khr_icd cl_khr_global_int32_base_atomics cl_khr_global_int32_extended_atomics cl_khr_local_int32_base_atomics cl_khr_local_int32_extended_atomics cl_khr_byte_addressable_store cl_khr_spir cl_intel_exec_by_local_thread cl_khr_depth_images cl_khr_3d_image_writes cl_khr_fp64 
+```
+
 All it appears to be showing is the quad core cpu, so it isn't that exciting.
 
 Try on another pc next.
