@@ -55,11 +55,24 @@ bool loadProg(
   }
 }
 
-int main(void)
+// provide the location of the .cl file in the first argument
+// then optionally provide the video number, 0 for /dev/video0 and so on,
+int main(int argc, char** argv)
 {
-  cv::VideoCapture cap(0);
+  int video_num = 0;
+  std::string cl_file = "misc.cl";
+
+  if (argc > 1)
+    cl_file = argv[1];
+  if (argc > 2)
+    video_num = atoi(argv[2]);
+
+  std::cout << "live coding with " << cl_file 
+      << " using /dev/video" << video_num << " as data source";
+
+  cv::VideoCapture cap(video_num);
   if (!cap.isOpened()) {
-    std::cerr << "could not open /dev/video0" << std::endl;
+    std::cerr << "could not open /dev/video" << video_num << std::endl;
     return -1;
   }
 
@@ -172,7 +185,7 @@ int main(void)
       // only do this intermittently
       if (i % 10 == 0) {
         cl::Program program;
-        if (loadProg(devices, context, program) == CL_SUCCESS) { 
+        if (loadProg(devices, context, program, cl_file) == CL_SUCCESS) { 
           //std::cerr << "bad program" << std::endl;
           kernel = cl::Kernel(program, "hello", &err);
           kernel.setArg(0, cl_image);
