@@ -16,10 +16,16 @@ bool loadProg(
     std::vector<cl::Device>& devices, 
     cl::Context& context,
     cl::Program& program, 
-    std::string cl_name = "misc.cl"
+    std::string& old_text,
+    const std::string cl_name = "misc.cl"
     )
 {
-
+  
+  // look at using inotfiy to see changes to file
+  // http://stackoverflow.com/questions/4664975/monitoring-file-using-inotify
+  // http://en.highscore.de/cpp/boost/asio.html
+  // http://boost.2283326.n4.nabble.com/ASIO-file-monitoring-help-td4645105.html
+  // http://stackoverflow.com/questions/12564039/alternatives-to-inotify-to-detect-when-a-new-file-is-created-under-a-folder/24970801#24970801
   try {
     std::ifstream cl_file;
     cl_file.open(cl_name.c_str()); //, std::ios::in);
@@ -33,6 +39,11 @@ bool loadProg(
       big_line += line + "\n"; 
     }
     //std::cout << big_line << std::endl;
+    if (old_text.compare(big_line) == 0) {
+      // don't bother trying to load program if it hasn't changed
+      return 1;
+    }
+    old_text = big_line;
 
     cl::Program::Sources source(
         1,
@@ -41,6 +52,7 @@ bool loadProg(
 
     program = cl::Program(context, source);
     cl_int rv = program.build(devices);
+
     return rv;
   } 
   catch (cl::Error err) {
@@ -51,6 +63,14 @@ bool loadProg(
       << err.err()
       << ")"
       << std::endl;
+
+    std::cout << "build status: " 
+        << program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(devices[0]) << std::endl;
+    std::cout 
+        << "build options:\t" << program.getBuildInfo<CL_PROGRAM_BUILD_OPTIONS>(devices[0]) << std::endl;
+    std::cout 
+        << "build log:\t " << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0]) << std::endl;
+    
     return err.err();
   }
 }
@@ -68,7 +88,7 @@ int main(int argc, char** argv)
     video_num = atoi(argv[2]);
 
   std::cout << "live coding with " << cl_file 
-      << " using /dev/video" << video_num << " as data source";
+      << " using /dev/video" << video_num << " as data source" << std::endl;
 
   cv::VideoCapture cap(video_num);
   if (!cap.isOpened()) {
@@ -167,7 +187,8 @@ int main(int argc, char** argv)
 
     cl::Kernel kernel;
     bool loaded_one_good_program = false;
-
+    std::string old_text = "";
+  
     int i = 0;
     while (true) 
     {
@@ -185,7 +206,7 @@ int main(int argc, char** argv)
       // only do this intermittently
       if (i % 10 == 0) {
         cl::Program program;
-        cl_int rv = loadProg(devices, context, program, cl_file);
+        cl_int rv = loadProg(devices, context, program, old_text, cl_file);
         if (rv == CL_SUCCESS) { 
           
           try {
@@ -204,10 +225,8 @@ int main(int argc, char** argv)
               << ")"
               << std::endl;
           }
-        } else {
-          std::cerr << "bad program " << rv << std::endl;
-        }
-      }
+        } 
+      } // load/reload program
       if (!loaded_one_good_program) 
         continue;
 

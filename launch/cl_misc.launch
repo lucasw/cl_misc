@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="dev" default="0" />
+
+  <group ns="camera_$(arg dev)" >
+    <node pkg="uvc_camera" type="uvc_camera_node" name="webcam_$(arg dev)" output="screen">
+      <param name="width"  type="int" value="640" />
+      <param name="height" type="int" value="480" />
+      <param name="fps" type="int" value="10" />
+      <param name="frame" type="string" value="webcam" />
+      <param name="device" type="string" value="/dev/video$(arg dev)" />
+    </node>
+  </group>
+
+</launch>
