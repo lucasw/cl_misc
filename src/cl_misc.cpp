@@ -203,7 +203,6 @@ int main(int argc, char** argv)
               << err.err()
               << ")"
               << std::endl;
-            continue;
           }
         } else {
           std::cerr << "bad program " << rv << std::endl;
