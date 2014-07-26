@@ -23,11 +23,14 @@ __kernel void hello(
   
   val_max = max(val, val_max);
 
-  //const int2 pos2 = {get_global_id(0), get_global_id(1) + 1};
-  //uint4 val2 = read_imageui(image, sampler, pos2);
+  const int2 pos2 = {get_global_id(0), get_global_id(1) + 1};
+  uint4 val2 = read_imageui(image, sampler, pos2);
+  
+  const int2 pos3 = {get_global_id(0), get_global_id(1) - 1};
+  uint4 val3 = read_imageui(image, sampler, pos3);
 
   //const int fr = 4;
-  write_imageui(im_out, pos, 32 * (val_max-val) ); // + val_max/32 );
+  write_imageui(im_out, pos, val/2 + val2/4 + val3/4 ); //+ pos2/2 + pos3/2 ); // + val_max/32 );
   //write_imageui(im_out, pos, get_local_id(0)*fr + get_local_id(1)*fr); // (val + val2)/2 );
 };
 

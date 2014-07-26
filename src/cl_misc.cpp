@@ -185,12 +185,28 @@ int main(int argc, char** argv)
       // only do this intermittently
       if (i % 10 == 0) {
         cl::Program program;
-        if (loadProg(devices, context, program, cl_file) == CL_SUCCESS) { 
-          //std::cerr << "bad program" << std::endl;
-          kernel = cl::Kernel(program, "hello", &err);
-          kernel.setArg(0, cl_image);
-          kernel.setArg(1, cl_result);
-          loaded_one_good_program = true;
+        cl_int rv = loadProg(devices, context, program, cl_file);
+        if (rv == CL_SUCCESS) { 
+          
+          try {
+            cl::Kernel new_kernel = cl::Kernel(program, "hello", &err);
+            new_kernel.setArg(0, cl_image);
+            new_kernel.setArg(1, cl_result);
+            loaded_one_good_program = true;
+            kernel = new_kernel; 
+          }
+          catch (cl::Error err) {
+            std::cerr 
+              << "ERROR: "
+              << err.what()
+              << "("
+              << err.err()
+              << ")"
+              << std::endl;
+            continue;
+          }
+        } else {
+          std::cerr << "bad program " << rv << std::endl;
         }
       }
       if (!loaded_one_good_program) 
