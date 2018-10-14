@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
+find_package(OpenCV REQUIRED)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -81,7 +82,7 @@ catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES cl_misc
 #  CATKIN_DEPENDS other_catkin_pkg
-#  DEPENDS system_lib
+  DEPENDS OpenCV
 )
 
 ###########
@@ -110,6 +111,7 @@ add_executable(cl_misc
 target_link_libraries(cl_misc
   OpenCL
   ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
 )
 
 #############
