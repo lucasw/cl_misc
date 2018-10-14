@@ -1,8 +1,9 @@
 <?xml version="1.0"?>
 <launch>
   <arg name="dev" default="0" />
+  <arg name="cl_file" default="$(find cl_misc)/src/misc.cl" />
 
-  <group ns="camera_$(arg dev)" >
+  <group ns="camera_$(arg dev)" if="false" >
     <node pkg="uvc_camera" type="uvc_camera_node" name="webcam_$(arg dev)" output="screen">
       <param name="width"  type="int" value="640" />
       <param name="height" type="int" value="480" />
@@ -11,5 +12,9 @@
       <param name="device" type="string" value="/dev/video$(arg dev)" />
     </node>
   </group>
+
+  <node name="cl_misc" pkg="cl_misc" type="cl_misc"
+      args="$(arg cl_file) $(arg dev)" >
+  </node>
 
 </launch>

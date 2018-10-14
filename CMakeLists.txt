@@ -6,6 +6,8 @@ project(cl_misc)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
+  roscpp
+  std_msgs
   )
 
 ## System dependencies are found with CMake's conventions
@@ -91,7 +93,7 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-# include_directories(include)
+include_directories(${catkin_INCLUDE_DIRS})
 
 ## Declare a cpp library
 # add_library(cl_misc

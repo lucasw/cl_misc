@@ -7,6 +7,7 @@
 
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <ros/ros.h>
 
 // load the opencl program from the disk
 // TBD optionally provide the old program, if it hasn't changed
@@ -24,7 +25,7 @@ bool loadProg(std::vector<cl::Device> &devices, cl::Context &context,
     std::ifstream cl_file;
     cl_file.open(cl_name.c_str()); //, std::ios::in);
     if (!cl_file.is_open()) {
-      std::cerr << "Could not open " << cl_name.c_str() << std::endl;
+      ROS_ERROR_STREAM("Could not open " << cl_name.c_str());
       return false;
     }
     std::string big_line;
@@ -47,18 +48,14 @@ bool loadProg(std::vector<cl::Device> &devices, cl::Context &context,
 
     return rv;
   } catch (cl::Error err) {
-    std::cerr << "ERROR: " << err.what() << "(" << err.err() << ")"
-              << std::endl;
+    ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err() << ")");
 
-    std::cout << "build status: "
-              << program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(devices[0])
-              << std::endl;
-    std::cout << "build options:\t"
-              << program.getBuildInfo<CL_PROGRAM_BUILD_OPTIONS>(devices[0])
-              << std::endl;
-    std::cout << "build log:\t "
-              << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0])
-              << std::endl;
+    ROS_INFO_STREAM("build status: "
+              << program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(devices[0]));
+    ROS_INFO_STREAM("build options:\t"
+              << program.getBuildInfo<CL_PROGRAM_BUILD_OPTIONS>(devices[0]));
+    ROS_INFO_STREAM("build log:\t "
+              << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0]));
 
     return err.err();
   }
@@ -66,7 +63,10 @@ bool loadProg(std::vector<cl::Device> &devices, cl::Context &context,
 
 // provide the location of the .cl file in the first argument
 // then optionally provide the video number, 0 for /dev/video0 and so on,
-int main(int argc, char **argv) {
+int main(int argc, char *argv[]) {
+  ros::init(argc, argv, "cl_misc");
+  ros::NodeHandle nh;
+
   int video_num = 0;
   std::string cl_file = "misc.cl";
 
@@ -75,12 +75,12 @@ int main(int argc, char **argv) {
   if (argc > 2)
     video_num = atoi(argv[2]);
 
-  std::cout << "live coding with " << cl_file << " using /dev/video"
-            << video_num << " as data source" << std::endl;
+  ROS_INFO_STREAM("live coding with " << cl_file << " using /dev/video"
+            << video_num << " as data source");
 
   cv::VideoCapture cap(video_num);
   if (!cap.isOpened()) {
-    std::cerr << "could not open /dev/video" << video_num << std::endl;
+    ROS_ERROR_STREAM("could not open /dev/video" << video_num);
     return -1;
   }
 
@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
     std::vector<cl::Platform> platforms;
     cl::Platform::get(&platforms);
     if (platforms.size() == 0) {
-      std::cout << "Platform size 0\n";
+      ROS_INFO_STREAM("Platform size 0");
       return EXIT_FAILURE;
     }
 
@@ -98,7 +98,8 @@ int main(int argc, char **argv) {
         CL_CONTEXT_PLATFORM, (cl_context_properties)(platforms[0])(),
         0 // the callback
     };
-    cl::Context context(CL_DEVICE_TYPE_CPU, properties);
+    // cl::Context context(CL_DEVICE_TYPE_CPU, properties);
+    cl::Context context(CL_DEVICE_TYPE_GPU, properties);
 
     std::vector<cl::Device> devices = context.getInfo<CL_CONTEXT_DEVICES>();
 
@@ -136,22 +137,29 @@ int main(int argc, char **argv) {
     region[1] = ht;
     region[2] = 1;
 
-    // std::vector<cl::Image2D>
-    cl::Image2D cl_image =
-        cl::Image2D(context,
-                    CL_MEM_READ_ONLY, // | CL_MEM_COPY_HOST_PTR,
-                    cl::ImageFormat(CL_R, CL_UNSIGNED_INT8), // single channel
-                    wd, ht, 0,
-                    NULL, //(void*) &im, // some random memory
-                    &err);
+    cl::Image2D cl_image;
+    cl::Image2D cl_result;
+    try {
+      // std::vector<cl::Image2D>
+      cl_image =
+          cl::Image2D(context,
+                      CL_MEM_READ_ONLY, // | CL_MEM_COPY_HOST_PTR,
+                      cl::ImageFormat(CL_R, CL_UNSIGNED_INT8), // single channel
+                      wd, ht, 0,
+                      NULL, //(void*) &im, // some random memory
+                      &err);
 
-    cl::Image2D cl_result =
-        cl::Image2D(context,
-                    CL_MEM_WRITE_ONLY, // | CL_MEM_COPY_HOST_PTR,
-                    cl::ImageFormat(CL_R, CL_UNSIGNED_INT8), // single channel
-                    wd, ht, 0,
-                    NULL, //(void*) &im, // some random memory
-                    &err);
+      cl_result =
+          cl::Image2D(context,
+                      CL_MEM_WRITE_ONLY, // | CL_MEM_COPY_HOST_PTR,
+                      cl::ImageFormat(CL_R, CL_UNSIGNED_INT8), // single channel
+                      wd, ht, 0,
+                      NULL, //(void*) &im, // some random memory
+                      &err);
+    } catch (cl::Error err) {
+      ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err() << ")");
+      return EXIT_FAILURE;
+    }
 
     cl::NDRange global_size(wd, ht);
     // local size doesn't mean much without having local memory
@@ -176,8 +184,8 @@ int main(int argc, char **argv) {
     while (true) {
       cap >> imc;
       if ((imc.rows != ht) || (imc.cols != wd)) {
-        std::cerr << "bad image " << imc.cols << " " << imc.rows << " != " << wd
-                  << " " << ht << std::endl;
+        ROS_ERROR_STREAM("bad image " << imc.cols << " " << imc.rows << " != " << wd
+                  << " " << ht);
         continue;
       }
       cv::Mat gray;
@@ -196,8 +204,7 @@ int main(int argc, char **argv) {
             loaded_one_good_program = true;
             kernel = new_kernel;
           } catch (cl::Error err) {
-            std::cerr << "ERROR: " << err.what() << "(" << err.err() << ")"
-                      << std::endl;
+            ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err() << ")");
           }
         }
       } // load/reload program
@@ -235,7 +242,7 @@ int main(int argc, char **argv) {
 
     ////
     if (false) {
-      std::cout << "output " << std::endl;
+      ROS_INFO_STREAM("output ");
       for (int i = 0; i < ht; i++) {
         for (int j = 0; j < ht; j++) {
           std::cout << "   " << int(im[i * wd + j]);
@@ -245,8 +252,7 @@ int main(int argc, char **argv) {
     }
     ////
   } catch (cl::Error err) {
-    std::cerr << "ERROR: " << err.what() << "(" << err.err() << ")"
-              << std::endl;
+    ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err() << ")");
     return EXIT_FAILURE;
   }
   // cv::waitKey(0);
