@@ -50,12 +50,14 @@ bool loadProg(std::vector<cl::Device> &devices, cl::Context &context,
   } catch (cl::Error err) {
     ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err() << ")");
 
-    ROS_INFO_STREAM("build status: "
-              << program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(devices[0]));
+    ROS_INFO_STREAM(
+        "build status: " << program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(
+            devices[0]));
     ROS_INFO_STREAM("build options:\t"
-              << program.getBuildInfo<CL_PROGRAM_BUILD_OPTIONS>(devices[0]));
+                    << program.getBuildInfo<CL_PROGRAM_BUILD_OPTIONS>(
+                           devices[0]));
     ROS_INFO_STREAM("build log:\t "
-              << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0]));
+                    << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0]));
 
     return err.err();
   }
@@ -76,7 +78,7 @@ int main(int argc, char *argv[]) {
     video_num = atoi(argv[2]);
 
   ROS_INFO_STREAM("live coding with " << cl_file << " using /dev/video"
-            << video_num << " as data source");
+                                      << video_num << " as data source");
 
   cv::VideoCapture cap(video_num);
   if (!cap.isOpened()) {
@@ -94,6 +96,16 @@ int main(int argc, char *argv[]) {
       return EXIT_FAILURE;
     }
 
+    for (cl::Platform &p : platforms) {
+      ROS_INFO_STREAM("Platform name: "
+                      << p.getInfo<CL_PLATFORM_NAME>() << "\n"
+                      << "Vendor: " << p.getInfo<CL_PLATFORM_VENDOR>() << "\n"
+                      << "Version: " << p.getInfo<CL_PLATFORM_VERSION>() << "\n"
+                      << "Profile: " << p.getInfo<CL_PLATFORM_PROFILE>() << "\n"
+                      << "Extenstions: "
+                      << p.getInfo<CL_PLATFORM_EXTENSIONS>());
+    }
+
     cl_context_properties properties[] = {
         CL_CONTEXT_PLATFORM, (cl_context_properties)(platforms[0])(),
         0 // the callback
@@ -102,6 +114,33 @@ int main(int argc, char *argv[]) {
     cl::Context context(CL_DEVICE_TYPE_GPU, properties);
 
     std::vector<cl::Device> devices = context.getInfo<CL_CONTEXT_DEVICES>();
+
+    for (cl::Device &d : devices) {
+      // TODO(lucasw) INFO_STREAM didn't print out much of this, just the first line
+      // ROS_INFO_STREAM(
+      std::cout <<
+          "Device name: "
+          << d.getInfo<CL_DEVICE_NAME>() << ", "
+          << "extensions: " << d.getInfo<CL_DEVICE_EXTENSIONS>() << ", "
+          << "global mem size: "
+          << d.getInfo<CL_DEVICE_GLOBAL_MEM_SIZE>() * 9.53674e-7 << "mb"
+          << "\n"
+          << "local mem size: "
+          << d.getInfo<CL_DEVICE_LOCAL_MEM_SIZE>() * 0.000976562 << "kb"
+          << "\n"
+          << "availability: "
+          << (d.getInfo<CL_DEVICE_AVAILABLE>() == true ? "true" : "false")
+          << "\n"
+          << "max work item dim: "
+          << d.getInfo<CL_DEVICE_MAX_WORK_ITEM_DIMENSIONS>() << "\n"
+          << "image processing support: "
+          << (d.getInfo<CL_DEVICE_IMAGE_SUPPORT>() == CL_TRUE ? "true"
+                                                              : "false") << "\n";
+
+      auto work_sizes = d.getInfo<CL_DEVICE_MAX_WORK_ITEM_SIZES>();
+      for (int i = 0; i < work_sizes.size(); ++i)
+        ROS_INFO_STREAM("dimension: " << i << " size: " << work_sizes.at(i));
+    }
 
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], 0, &err);
@@ -139,23 +178,27 @@ int main(int argc, char *argv[]) {
 
     cl::Image2D cl_image;
     cl::Image2D cl_result;
+    cl::ImageFormat format(CL_R, CL_UNSIGNED_INT8); // single channel
+    ROS_INFO_STREAM(wd << " " << ht);
     try {
       // std::vector<cl::Image2D>
-      cl_image =
-          cl::Image2D(context,
-                      CL_MEM_READ_ONLY, // | CL_MEM_COPY_HOST_PTR,
-                      cl::ImageFormat(CL_R, CL_UNSIGNED_INT8), // single channel
-                      wd, ht, 0,
-                      NULL, //(void*) &im, // some random memory
-                      &err);
+      cl_image = cl::Image2D(context,
+                             CL_MEM_READ_ONLY, // | CL_MEM_COPY_HOST_PTR,
+                             format, wd, ht, 0,
+                             NULL, //(void*) &im, // some random memory
+                             &err);
 
-      cl_result =
-          cl::Image2D(context,
-                      CL_MEM_WRITE_ONLY, // | CL_MEM_COPY_HOST_PTR,
-                      cl::ImageFormat(CL_R, CL_UNSIGNED_INT8), // single channel
-                      wd, ht, 0,
-                      NULL, //(void*) &im, // some random memory
-                      &err);
+    } catch (cl::Error err) {
+      ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err() << ")");
+      return EXIT_FAILURE;
+    }
+
+    try {
+      cl_result = cl::Image2D(context,
+                              CL_MEM_WRITE_ONLY, // | CL_MEM_COPY_HOST_PTR,
+                              format, wd, ht, 0,
+                              NULL, //(void*) &im, // some random memory
+                              &err);
     } catch (cl::Error err) {
       ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err() << ")");
       return EXIT_FAILURE;
@@ -184,8 +227,8 @@ int main(int argc, char *argv[]) {
     while (true) {
       cap >> imc;
       if ((imc.rows != ht) || (imc.cols != wd)) {
-        ROS_ERROR_STREAM("bad image " << imc.cols << " " << imc.rows << " != " << wd
-                  << " " << ht);
+        ROS_ERROR_STREAM("bad image " << imc.cols << " " << imc.rows
+                                      << " != " << wd << " " << ht);
         continue;
       }
       cv::Mat gray;
@@ -204,7 +247,8 @@ int main(int argc, char *argv[]) {
             loaded_one_good_program = true;
             kernel = new_kernel;
           } catch (cl::Error err) {
-            ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err() << ")");
+            ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err()
+                                       << ")");
           }
         }
       } // load/reload program
@@ -215,8 +259,8 @@ int main(int argc, char *argv[]) {
                               CL_TRUE, // blocking write
                               origin, region, 0, 0,
                               gray.data //,
-                              // NULL,
-                              //&event
+                                        // NULL,
+                                        //&event
       );
 
       queue.enqueueNDRangeKernel(kernel, offset, global_size, local_size, NULL,
@@ -226,8 +270,8 @@ int main(int argc, char *argv[]) {
                              CL_TRUE, // blocking read
                              origin, region, 0, 0,
                              im //_out //,
-                             // NULL,
-                             //&event
+                                // NULL,
+                                //&event
       );
 
       cv::Mat imt = cv::Mat(cv::Size(wd, ht), CV_8UC1, im);
