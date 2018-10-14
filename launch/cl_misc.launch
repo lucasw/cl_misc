@@ -2,6 +2,7 @@
 <launch>
   <arg name="dev" default="0" />
   <arg name="cl_file" default="$(find cl_misc)/src/misc.cl" />
+  <arg name="use_cl_image" default="false" doc="set to true if opencl driver supports images" />
 
   <group ns="camera_$(arg dev)" if="false" >
     <node pkg="uvc_camera" type="uvc_camera_node" name="webcam_$(arg dev)" output="screen">
@@ -15,7 +16,14 @@
 
   <node name="cl_misc" pkg="cl_misc" type="cl_misc"
       output="screen"
-      args="$(arg cl_file) $(arg dev)" >
+      args="$(arg cl_file) $(arg dev)"
+      if="$(arg use_cl_image)">
+  </node>
+
+  <node name="cl_buffer" pkg="cl_misc" type="cl_buffer"
+      output="screen"
+      args="$(arg cl_file) $(arg dev)"
+      unless="$(arg use_cl_image)">
   </node>
 
 </launch>

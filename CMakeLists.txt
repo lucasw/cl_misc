@@ -116,6 +116,13 @@ target_link_libraries(cl_misc
   ${OpenCV_LIBRARIES}
 )
 
+add_executable(cl_buffer src/cl_buffer.cpp)
+target_link_libraries(cl_buffer
+  OpenCL
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+)
+
 #############
 ## Install ##
 #############
