@@ -135,8 +135,10 @@ int main(int argc, char *argv[]) {
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], 0, &err);
 
-    const int wd = 512;  // 256;
-    const int ht = 512;  // 256;
+    int wd = 400;
+    ros::param::get("~width", wd);
+    int ht = 400;
+    ros::param::get("~height", ht);
     cv::Mat input_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
     cv::circle(input_image, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(0.2), 3);
     cv::Mat blank_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
@@ -239,11 +241,19 @@ int main(int argc, char *argv[]) {
     );
     queue.enqueueBarrierWithWaitList();
 
-    int count = 0;
+    int num_kernel_loops = 100;
+    ros::param::get("~loops", num_kernel_loops);
+    bool save_images = false;
+    ros::param::get("~save_images", save_images);
+
+    int outer_loops = 0;
+    int inner_loops = 0;
     while (ros::ok()) {
-      ROS_DEBUG_STREAM("step " << count);
+      ROS_DEBUG_STREAM("step " << outer_loops << " " << inner_loops);
       int num = 0;
-      for (size_t i = 0; i < kernels.size() * 4; ++i) {
+      ros::Time t0 = ros::Time::now();
+      const size_t runs = kernels.size() * num_kernel_loops;
+      for (size_t i = 0; i < runs; ++i) {
       // for (size_t i = 0; i < 1; ++i) {
         queue.enqueueNDRangeKernel(kernels[num % kernels.size()], offset,
                                    global_size,  // * sizeof(float),
@@ -251,7 +261,7 @@ int main(int argc, char *argv[]) {
                                    &event);
         queue.enqueueBarrierWithWaitList();
         num++;
-        count++;
+        inner_loops++;
       }
       queue.enqueueReadBuffer(cl_image[(num + 1) % cl_image.size()],
                               CL_TRUE, // blocking read
@@ -260,7 +270,17 @@ int main(int argc, char *argv[]) {
                                 // NULL,
                                 //&event
       );
+      ros::Time t1 = ros::Time::now();
+      const float runs_per_sec = runs / (t1 - t0).toSec();
+      ROS_INFO_STREAM("runs per sec " << runs_per_sec << ", nodes per second "
+                      << wd * ht * runs_per_sec);
 
+      if (save_images) {
+        std::stringstream ss;
+        ss << (outer_loops + 1000);
+        std::string name = "cl_prop_" + ss.str().substr(1) + ".png";
+        cv::imwrite(name, input_image * 255);
+      }
       cv::imshow("input image", input_image);
       ch = cv::waitKey(5);
       if (ch == 'q')
@@ -268,7 +288,7 @@ int main(int argc, char *argv[]) {
       if (ch == 'r') {
 
       }
-
+      ++outer_loops;
     } // for loop
 
     ////
