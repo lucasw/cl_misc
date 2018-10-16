@@ -9,6 +9,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <ros/ros.h>
 
+
 // load the opencl program from the disk
 // TBD optionally provide the old program, if it hasn't changed
 // then don't rebuild it

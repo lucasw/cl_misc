@@ -9,6 +9,28 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <ros/ros.h>
 
+void pressure(const cv::Mat& past,
+              const cv::Mat& pres,
+              cv::Mat& futu,
+              int width, int height) {
+
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      float val = 0;
+      if (x > 0)
+        val += pres.at<float>(y, x - 1) / 2.0;
+      if (y > 0)
+        val += pres.at<float>(y - 1, x) / 2.0;
+      if (x < width - 1)
+        val += pres.at<float>(y, x + 1) / 2.0;
+      if (y < height - 1)
+        val += pres.at<float>(y + 1, x) / 2.0;
+
+      futu.at<float>(y, x) = val - past.at<float>(y, x);
+    }
+  }
+};
+
 // load the opencl program from the disk
 // TBD optionally provide the old program, if it hasn't changed
 // then don't rebuild it
@@ -76,6 +98,9 @@ int main(int argc, char *argv[]) {
 
   ROS_INFO_STREAM("using " << cl_file);
 
+  bool use_gpu = true;
+  ros::param::get("~use_gpu", use_gpu);
+
   cl_int err = CL_SUCCESS;
   try {
 
@@ -142,6 +167,13 @@ int main(int argc, char *argv[]) {
     cv::Mat input_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
     cv::circle(input_image, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(0.2), 3);
     cv::Mat blank_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
+
+    // for non gpu test
+    std::array<cv::Mat, 3> cv_image;
+    for (size_t i = 0; i < cv_image.size(); ++i) {
+      cv_image[i] = blank_image.clone();
+    }
+    cv_image[1] = input_image.clone();
 
 #if 0
     unsigned char im[wd * ht];
@@ -221,25 +253,27 @@ int main(int argc, char *argv[]) {
     int ch = cv::waitKey(0);
 
     // clear all the images
-    for (size_t i = 0; i < cl_image.size(); ++i) {
-    queue.enqueueWriteBuffer(cl_image[0],
-                             CL_TRUE, // blocking write
-                             origin, region,
-                             blank_image.data //,
-                                      // NULL,
-                                      //&event
-    );
+    if (use_gpu) {
+      for (size_t i = 0; i < cl_image.size(); ++i) {
+      queue.enqueueWriteBuffer(cl_image[0],
+                               CL_TRUE, // blocking write
+                               origin, region,
+                               blank_image.data //,
+                                        // NULL,
+                                        //&event
+      );
+      }
+      queue.enqueueBarrierWithWaitList();
+      // now write the circle to the 'present' buffer
+      queue.enqueueWriteBuffer(cl_image[1],
+                               CL_TRUE, // blocking write
+                               origin, region,
+                               input_image.data //,
+                                        // NULL,
+                                        //&event
+      );
+      queue.enqueueBarrierWithWaitList();
     }
-    queue.enqueueBarrierWithWaitList();
-    // now write the circle to the 'present' buffer
-    queue.enqueueWriteBuffer(cl_image[1],
-                             CL_TRUE, // blocking write
-                             origin, region,
-                             input_image.data //,
-                                      // NULL,
-                                      //&event
-    );
-    queue.enqueueBarrierWithWaitList();
 
     int num_kernel_loops = 100;
     ros::param::get("~loops", num_kernel_loops);
@@ -252,24 +286,36 @@ int main(int argc, char *argv[]) {
       ROS_DEBUG_STREAM("step " << outer_loops << " " << inner_loops);
       int num = 0;
       ros::Time t0 = ros::Time::now();
-      const size_t runs = kernels.size() * num_kernel_loops;
-      for (size_t i = 0; i < runs; ++i) {
-      // for (size_t i = 0; i < 1; ++i) {
-        queue.enqueueNDRangeKernel(kernels[num % kernels.size()], offset,
-                                   global_size,  // * sizeof(float),
-                                   local_size, NULL,
-                                   &event);
-        queue.enqueueBarrierWithWaitList();
-        num++;
-        inner_loops++;
+
+      const size_t runs = cl_image.size() * num_kernel_loops;
+      if (use_gpu) {
+        // const size_t runs = kernels.size() * num_kernel_loops;
+        for (size_t i = 0; i < runs; ++i) {
+          queue.enqueueNDRangeKernel(kernels[num % kernels.size()], offset,
+                                     global_size,  // * sizeof(float),
+                                     local_size, NULL,
+                                     &event);
+          queue.enqueueBarrierWithWaitList();
+          num++;
+          inner_loops++;
+        }
+        queue.enqueueReadBuffer(cl_image[(num + 1) % cl_image.size()],
+                                CL_TRUE, // blocking read
+                                origin, region,
+                                input_image.data //_out //,
+                                  // NULL,
+                                  //&event
+        );
+      } else {
+        for (size_t i = 0; i < runs; ++i) {
+          const int past = (num + 0) % cv_image.size();
+          const int pres = (num + 1) % cv_image.size();
+          const int futu = (num + 2) % cv_image.size();
+          pressure(cv_image[past], cv_image[pres], cv_image[futu],
+                   wd, ht);
+        }
+        input_image = cv_image[0].clone();
       }
-      queue.enqueueReadBuffer(cl_image[(num + 1) % cl_image.size()],
-                              CL_TRUE, // blocking read
-                              origin, region,
-                              input_image.data //_out //,
-                                // NULL,
-                                //&event
-      );
       ros::Time t1 = ros::Time::now();
       const float runs_per_sec = runs / (t1 - t0).toSec();
       ROS_INFO_STREAM("runs per sec " << runs_per_sec << ", nodes per second "

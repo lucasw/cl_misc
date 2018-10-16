@@ -3,6 +3,7 @@
   <arg name="width" default="400" />
   <arg name="height" default="400" />
   <arg name="save_images" default="false" />
+  <arg name="use_gpu" default="true" />
   <arg name="loops" default="200"
       doc="the number of times to update before copying out and displaying an image, it is multiplied by 3 internally" />
   <arg name="cl_file" default="$(find cl_misc)/src/buffer.cl" />
@@ -14,5 +15,6 @@
     <param name="height" value="$(arg height)" />
     <param name="save_images" value="$(arg save_images)" />
     <param name="loops" value="$(arg loops)" />
+    <param name="use_gpu" value="$(arg use_gpu)" />
   </node>
 </launch>
