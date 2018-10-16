@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<launch>
+  <arg name="cl_file" default="$(find cl_misc)/src/buffer.cl" />
+  <node name="cl_buffer" pkg="cl_misc" type="cl_buffer"
+      output="screen"
+      args="$(arg cl_file)" >
+  </node>
+</launch>

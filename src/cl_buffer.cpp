@@ -69,22 +69,12 @@ int main(int argc, char *argv[]) {
   ros::init(argc, argv, "cl_buffer");
   ros::NodeHandle nh;
 
-  int video_num = 0;
-  std::string cl_file = "misc.cl";
+  std::string cl_file = "buffer.cl";
 
   if (argc > 1)
     cl_file = argv[1];
-  if (argc > 2)
-    video_num = atoi(argv[2]);
 
-  ROS_INFO_STREAM("live coding with " << cl_file << " using /dev/video"
-                                      << video_num << " as data source");
-
-  cv::VideoCapture cap(video_num);
-  if (!cap.isOpened()) {
-    ROS_ERROR_STREAM("could not open /dev/video" << video_num);
-    return -1;
-  }
+  ROS_INFO_STREAM("using " << cl_file);
 
   cl_int err = CL_SUCCESS;
   try {
@@ -145,33 +135,29 @@ int main(int argc, char *argv[]) {
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], 0, &err);
 
-    // const int wd = 512;
-    // const int ht = 512;
-    // cv::Mat imc = cv::Mat(cv::Size(wd,ht), CV_8UC1, cv::Scalar::all(0));
-    // cv::circle(imc, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(255), -1);
-    cv::Mat imc;
-    cap >> imc;
-    const int wd = imc.cols;
-    const int ht = imc.rows;
+    const int wd = 256;
+    const int ht = 256;
+    cv::Mat input_image = cv::Mat(cv::Size(wd,ht), CV_8UC1, cv::Scalar::all(0));
+    cv::circle(input_image, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(255), -1);
 
+#if 0
     unsigned char im[wd * ht];
 
     for (int i = 0; i < ht; i++) {
       for (int j = 0; j < ht; j++) {
-        int val = int(imc.data[i * imc.step + j]);
+        // int val = int(input_image.data[i * input_image.step + j]);
         im[wd * i + j] = val;
         // if ((j%8 == 0) && (i%8 == 0))
         //  std::cout << "   " << val;
       }
       // std::cout << std::endl;
     }
-
-    // unsigned char im_out[wd * ht];
+#endif
 
     size_t origin = 0;
     size_t region = wd * ht;
 
-    size_t size = wd * ht;
+    const size_t size = wd * ht;
     cl::Buffer cl_image;
     cl::Buffer cl_result;
     ROS_INFO_STREAM(wd << " " << ht);
@@ -199,15 +185,15 @@ int main(int argc, char *argv[]) {
       return EXIT_FAILURE;
     }
 
-    cl::NDRange global_size(wd, ht);
+    cl::NDRange global_size(wd * ht);
     // local size doesn't mean much without having local memory
     // the null range causes automatic setting of local size,
     // and because the cpu has four cores it looks like it sets the
     // local size to be the global_size divided by 3 (leaving 1 core free for
     // other tasks) though other times it looks like sets the local size to the
     // full size
-    // cl::NDRange local_size= cl::NullRange;
-    cl::NDRange local_size(16, 16);
+    cl::NDRange local_size = cl::NullRange;
+    // cl::NDRange local_size(16, 16);
     // this is just a global offset, don't think global size has to shrink
     // by same amount
     // Null and 0,0 should be the same
@@ -215,80 +201,75 @@ int main(int argc, char *argv[]) {
     cl::NDRange offset = cl::NullRange;
 
     cl::Kernel kernel;
-    bool loaded_one_good_program = false;
     std::string old_text = "";
 
-    int i = 0;
-    while (true) {
-      cap >> imc;
-      if ((imc.rows != ht) || (imc.cols != wd)) {
-        ROS_ERROR_STREAM("bad image " << imc.cols << " " << imc.rows
-                                      << " != " << wd << " " << ht);
-        continue;
+    cl::Program program;
+    cl_int rv = loadProg(devices, context, program, old_text, cl_file);
+    if (rv == CL_SUCCESS) {
+
+      try {
+        kernel = cl::Kernel(program, "pressure", &err);
+        kernel.setArg(0, cl_image);
+        kernel.setArg(1, cl_result);
+        kernel.setArg(2, wd);
+        kernel.setArg(3, ht);
+      } catch (cl::Error err) {
+        ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err()
+                                   << ")");
+        return EXIT_FAILURE;
       }
-      cv::Mat gray;
-      cv::cvtColor(imc, gray, CV_BGR2GRAY);
+    }
 
-      // only do this intermittently
-      if (i % 10 == 0) {
-        cl::Program program;
-        cl_int rv = loadProg(devices, context, program, old_text, cl_file);
-        if (rv == CL_SUCCESS) {
+    cv::imshow("input image", input_image);
+    cv::Mat imt = cv::Mat(cv::Size(wd, ht), CV_8UC1, cv::Scalar::all(0));
+    cv::imshow("processed image", imt);
+    int ch = cv::waitKey(0);
 
-          try {
-            cl::Kernel new_kernel = cl::Kernel(program, "hello", &err);
-            new_kernel.setArg(0, cl_image);
-            new_kernel.setArg(1, cl_result);
-            loaded_one_good_program = true;
-            kernel = new_kernel;
-          } catch (cl::Error err) {
-            ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err()
-                                       << ")");
-          }
-        }
-      } // load/reload program
-      if (!loaded_one_good_program)
-        continue;
-
+    int i = 0;
+    // while (ros::ok()) {
+    {
+      ROS_INFO_STREAM("step");
       queue.enqueueWriteBuffer(cl_image,
                                CL_TRUE, // blocking write
                                origin, region,
-                               gray.data //,
+                               input_image.data //,
                                         // NULL,
                                         //&event
       );
 
       queue.enqueueNDRangeKernel(kernel, offset, global_size, local_size, NULL,
                                  &event);
+      // queue.enqueueNDRangeKernel(kernel, offset, global_size, local_size, NULL,
+      //                            &event);
 
       queue.enqueueReadBuffer(cl_result,
                               CL_TRUE, // blocking read
                               origin, region,
-                              im //_out //,
+                              imt.data //_out //,
                                 // NULL,
                                 //&event
       );
 
-      cv::Mat imt = cv::Mat(cv::Size(wd, ht), CV_8UC1, im);
       cv::imshow("processed image", imt);
-      int ch = cv::waitKey(5);
-
-      if (ch == 'q')
-        break;
+      ch = cv::waitKey(0);
+      // if (ch == 'q')
+      //   break;
 
       i++;
     } // for loop
 
     ////
+    #if 1
     if (false) {
       ROS_INFO_STREAM("output ");
       for (int i = 0; i < ht; i++) {
-        for (int j = 0; j < ht; j++) {
-          std::cout << "   " << int(im[i * wd + j]);
+        for (int j = 0; j < wd; j++) {
+          std::cout << "   " << int(imt.at<char>(wd, ht));
         }
         std::cout << std::endl;
       }
     }
+    #endif
     ////
   } catch (cl::Error err) {
     ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err() << ")");
