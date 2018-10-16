@@ -12,10 +12,11 @@
 void pressure(const cv::Mat& past,
               const cv::Mat& pres,
               cv::Mat& futu,
-              int width, int height) {
+              const int width, const int height) {
 
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
+      #if 0
       float val = 0;
       if (x > 0)
         val += pres.at<float>(y, x - 1) / 2.0;
@@ -25,8 +26,17 @@ void pressure(const cv::Mat& past,
         val += pres.at<float>(y, x + 1) / 2.0;
       if (y < height - 1)
         val += pres.at<float>(y + 1, x) / 2.0;
+      #endif
+      // TODO(lucasw) if there was an array of bools to indicate this
+      // that would be faster
+      if ((x == 0) || (y == 0) || (x == width - 1) || (y == height - 1))
+        continue;
 
-      futu.at<float>(y, x) = val - past.at<float>(y, x);
+      futu.at<float>(y, x) = (pres.at<float>(y, x - 1) +
+                              pres.at<float>(y - 1, x) +
+                              pres.at<float>(y, x + 1) +
+                              pres.at<float>(y + 1, x)
+                             ) * 0.5 - past.at<float>(y, x);
     }
   }
 };
@@ -82,6 +92,35 @@ bool loadProg(std::vector<cl::Device> &devices, cl::Context &context,
                     << program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(devices[0]));
 
     return err.err();
+  }
+}
+
+struct Mouse {
+  bool left_button_down = false;
+  bool left_button_down_edge = false;
+  bool right_button_down = false;
+  bool right_button_down_edge = false;
+  int x = 0;
+  int y = 0;
+};
+
+static void onMouse(int event, int x, int y, int flags, void* user_data) {
+  Mouse* mouse = static_cast<Mouse*>(user_data);
+  mouse->x = x;
+  mouse->y = y;
+  if (event == cv::EVENT_LBUTTONDOWN) {
+    mouse->left_button_down = true;
+    mouse->left_button_down_edge = true;
+  }
+  if (event == cv::EVENT_LBUTTONUP) {
+    mouse->left_button_down = false;
+  }
+  if (event == cv::EVENT_RBUTTONDOWN) {
+    mouse->right_button_down = true;
+    mouse->right_button_down_edge = true;
+  }
+  if (event == cv::EVENT_RBUTTONUP) {
+    mouse->right_button_down = false;
   }
 }
 
@@ -165,7 +204,7 @@ int main(int argc, char *argv[]) {
     int ht = 400;
     ros::param::get("~height", ht);
     cv::Mat input_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
-    cv::circle(input_image, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(0.2), 3);
+    // cv::circle(input_image, cv::Point(wd/2, ht/2), 20, cv::Scalar::all(0.2), 3);
     cv::Mat blank_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
 
     // for non gpu test
@@ -248,9 +287,11 @@ int main(int argc, char *argv[]) {
     }
 
     cv::imshow("input image", input_image);
+    Mouse mouse;
+    cv::setMouseCallback("input image", onMouse, &mouse);
     // cv::Mat imt = cv::Mat(cv::Size(wd, ht), CV_8UC1, cv::Scalar::all(0));
     // cv::imshow("processed image", imt);
-    int ch = cv::waitKey(0);
+    int ch = cv::waitKey(200);
 
     // clear all the images
     if (use_gpu) {
@@ -263,15 +304,6 @@ int main(int argc, char *argv[]) {
                                         //&event
       );
       }
-      queue.enqueueBarrierWithWaitList();
-      // now write the circle to the 'present' buffer
-      queue.enqueueWriteBuffer(cl_image[1],
-                               CL_TRUE, // blocking write
-                               origin, region,
-                               input_image.data //,
-                                        // NULL,
-                                        //&event
-      );
       queue.enqueueBarrierWithWaitList();
     }
 
@@ -289,6 +321,17 @@ int main(int argc, char *argv[]) {
 
       const size_t runs = cl_image.size() * num_kernel_loops;
       if (use_gpu) {
+        int pres = (num + 1) % cl_image.size();
+        // now write the circle to the 'present' buffer
+        queue.enqueueWriteBuffer(cl_image[pres],
+                                 CL_TRUE, // blocking write
+                                 origin, region,
+                                 input_image.data //,
+                                          // NULL,
+                                          //&event
+        );
+        queue.enqueueBarrierWithWaitList();
+
         // const size_t runs = kernels.size() * num_kernel_loops;
         for (size_t i = 0; i < runs; ++i) {
           queue.enqueueNDRangeKernel(kernels[num % kernels.size()], offset,
@@ -299,39 +342,68 @@ int main(int argc, char *argv[]) {
           num++;
           inner_loops++;
         }
-        queue.enqueueReadBuffer(cl_image[(num + 1) % cl_image.size()],
+        pres = (num + 1) % cl_image.size();
+        queue.enqueueReadBuffer(cl_image[pres],
                                 CL_TRUE, // blocking read
                                 origin, region,
                                 input_image.data //_out //,
                                   // NULL,
                                   //&event
         );
-      } else {
+      } else {  // use cpu
         for (size_t i = 0; i < runs; ++i) {
           const int past = (num + 0) % cv_image.size();
           const int pres = (num + 1) % cv_image.size();
           const int futu = (num + 2) % cv_image.size();
           pressure(cv_image[past], cv_image[pres], cv_image[futu],
                    wd, ht);
+          num++;
+          inner_loops++;
         }
-        input_image = cv_image[0].clone();
+        int pres = (num + 1) % cv_image.size();
+        input_image = cv_image[pres];
       }
       ros::Time t1 = ros::Time::now();
       const float runs_per_sec = runs / (t1 - t0).toSec();
-      ROS_INFO_STREAM("runs per sec " << runs_per_sec << ", nodes per second "
-                      << wd * ht * runs_per_sec);
+      ROS_DEBUG_STREAM("runs per sec " << runs_per_sec << ", nodes per second "
+                       << wd * ht * runs_per_sec);
 
       if (save_images) {
         std::stringstream ss;
         ss << (outer_loops + 1000);
         std::string name = "cl_prop_" + ss.str().substr(1) + ".png";
-        cv::imwrite(name, input_image * 255);
+        cv::imwrite(name, (input_image + 0.5) * 128);
       }
-      cv::imshow("input image", input_image);
+      if (mouse.left_button_down_edge) {
+        mouse.left_button_down_edge = false;
+        cv::circle(input_image, cv::Point(mouse.x, mouse.y), 20, cv::Scalar::all(-0.2), 5);
+        cv::circle(input_image, cv::Point(mouse.x, mouse.y), 20, cv::Scalar::all(0.4), 2);
+      }
+      {
+        cv::imshow("input image", input_image);
+        double min;
+        double max;
+        cv::minMaxLoc(input_image, &min, &max, nullptr, nullptr);
+        double sum = cv::sum(input_image)[0];
+        // ROS_INFO_STREAM(min << " " << max << " " << sum);
+        const double sat = 10.0;
+        if (max > sat)
+          input_image *= sat / max * 0.8;
+        if (min < -sat)
+          input_image *= sat / -min * 0.8;
+        cv::minMaxLoc(input_image, &min, &max, nullptr, nullptr);
+        sum = cv::sum(input_image)[0];
+        // ROS_INFO_STREAM(min << " " << max << " " << sum);
+      }
       ch = cv::waitKey(5);
       if (ch == 'q')
         break;
       if (ch == 'r') {
+        ROS_INFO_STREAM("reset");
+        input_image = cv::Scalar::all(0);
+        // TODO(lucasw) this doesn't effect the gpu buffers
+        for (size_t i = 0; i < cv_image.size(); ++i)
+          cv_image[i] = cv::Scalar::all(0);
 
       }
       ++outer_loops;
