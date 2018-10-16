@@ -6,16 +6,18 @@ __kernel void pressure(__global uchar* image,
   const int pos = get_global_id(0);
   const int x = pos % width;
   const int y = (pos - x) / width;
-  // im_out[pos] = image[pos] / 2;
-  if (x > 0)
-     im_out[pos] = image[pos - 1];
-
   // if (x > 0)
-  //   im_out[pos] += image[pos - 1] / 4;
-  // if (y > 0)
-  //   im_out[pos] += image[pos - width] / 4;
-  // if (x < width - 1)
-  //   im_out[pos] += image[pos + 1] / 4;
-  // if (y < height - 1)
-  //   im_out[pos] += image[pos + width] / 4;
+  //    im_out[pos] = image[pos - 1];
+
+  // im_out[pos] = image[y * width + ((x + 1) % width)];
+
+  im_out[pos] = 0;
+  if (x > 0)
+    im_out[pos] += image[pos - 1] / 4;
+  if (y > 0)
+    im_out[pos] += image[pos - width] / 4;
+  if (x < width - 1)
+    im_out[pos] += image[pos + 1] / 4;
+  if (y < height - 1)
+    im_out[pos] += image[pos + width] / 4;
 };
