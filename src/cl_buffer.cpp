@@ -203,30 +203,18 @@ int main(int argc, char *argv[]) {
     ros::param::get("~width", wd);
     int ht = 400;
     ros::param::get("~height", ht);
-    cv::Mat input_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
-    // cv::circle(input_image, cv::Point(wd/2, ht/2), 20, cv::Scalar::all(0.2), 3);
-    cv::Mat blank_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
 
     // for non gpu test
     std::array<cv::Mat, 3> cv_image;
-    for (size_t i = 0; i < cv_image.size(); ++i) {
-      cv_image[i] = blank_image.clone();
-    }
-    cv_image[1] = input_image.clone();
-
-#if 0
-    unsigned char im[wd * ht];
-
-    for (int i = 0; i < ht; i++) {
-      for (int j = 0; j < ht; j++) {
-        // int val = int(input_image.data[i * input_image.step + j]);
-        im[wd * i + j] = val;
-        // if ((j%8 == 0) && (i%8 == 0))
-        //  std::cout << "   " << val;
+    {
+      cv::Mat input_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
+      // cv::circle(input_image, cv::Point(wd/2, ht/2), 20, cv::Scalar::all(0.2), 3);
+      cv::Mat blank_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
+      for (size_t i = 0; i < cv_image.size(); ++i) {
+        cv_image[i] = blank_image.clone();
       }
-      // std::cout << std::endl;
+      cv_image[1] = input_image.clone();
     }
-#endif
 
     size_t origin = 0;
     size_t region = wd * ht * sizeof(float);
@@ -286,7 +274,7 @@ int main(int argc, char *argv[]) {
       return EXIT_FAILURE;
     }
 
-    cv::imshow("input image", input_image);
+    cv::imshow("input image", cv_image[1]);
     Mouse mouse;
     cv::setMouseCallback("input image", onMouse, &mouse);
     // cv::Mat imt = cv::Mat(cv::Size(wd, ht), CV_8UC1, cv::Scalar::all(0));
@@ -296,10 +284,10 @@ int main(int argc, char *argv[]) {
     // clear all the images
     if (use_gpu) {
       for (size_t i = 0; i < cl_image.size(); ++i) {
-      queue.enqueueWriteBuffer(cl_image[0],
+      queue.enqueueWriteBuffer(cl_image[i],
                                CL_TRUE, // blocking write
                                origin, region,
-                               blank_image.data //,
+                               cv_image[i].data //,
                                         // NULL,
                                         //&event
       );
@@ -321,15 +309,16 @@ int main(int argc, char *argv[]) {
 
       const size_t runs = cl_image.size() * num_kernel_loops;
       if (use_gpu) {
-        int pres = (num + 1) % cl_image.size();
         // now write the circle to the 'present' buffer
-        queue.enqueueWriteBuffer(cl_image[pres],
-                                 CL_TRUE, // blocking write
-                                 origin, region,
-                                 input_image.data //,
-                                          // NULL,
-                                          //&event
-        );
+        for (size_t i = 0; i < cl_image.size(); ++i) {
+          queue.enqueueWriteBuffer(cl_image[i],
+                                   CL_TRUE, // blocking write
+                                   origin, region,
+                                   cv_image[i].data //,
+                                            // NULL,
+                                            //&event
+          );
+        }
         queue.enqueueBarrierWithWaitList();
 
         // const size_t runs = kernels.size() * num_kernel_loops;
@@ -342,14 +331,15 @@ int main(int argc, char *argv[]) {
           num++;
           inner_loops++;
         }
-        pres = (num + 1) % cl_image.size();
-        queue.enqueueReadBuffer(cl_image[pres],
-                                CL_TRUE, // blocking read
-                                origin, region,
-                                input_image.data //_out //,
-                                  // NULL,
-                                  //&event
-        );
+        for (size_t i = 0; i < cl_image.size(); ++i) {
+          queue.enqueueReadBuffer(cl_image[i],
+                                  CL_TRUE, // blocking read
+                                  origin, region,
+                                  cv_image[i].data //_out //,
+                                    // NULL,
+                                    //&event
+          );
+        }
       } else {  // use cpu
         for (size_t i = 0; i < runs; ++i) {
           const int past = (num + 0) % cv_image.size();
@@ -360,9 +350,10 @@ int main(int argc, char *argv[]) {
           num++;
           inner_loops++;
         }
-        int pres = (num + 1) % cv_image.size();
-        input_image = cv_image[pres];
       }
+      const int past = (num + 0) % cv_image.size();
+      const int pres = (num + 1) % cv_image.size();
+      const int futu = (num + 2) % cv_image.size();
       ros::Time t1 = ros::Time::now();
       const float runs_per_sec = runs / (t1 - t0).toSec();
       ROS_DEBUG_STREAM("runs per sec " << runs_per_sec << ", nodes per second "
@@ -372,27 +363,27 @@ int main(int argc, char *argv[]) {
         std::stringstream ss;
         ss << (outer_loops + 1000);
         std::string name = "cl_prop_" + ss.str().substr(1) + ".png";
-        cv::imwrite(name, (input_image + 0.5) * 128);
+        cv::imwrite(name, (cv_image[pres] + 0.5) * 128);
       }
       if (mouse.left_button_down_edge) {
         mouse.left_button_down_edge = false;
-        cv::circle(input_image, cv::Point(mouse.x, mouse.y), 20, cv::Scalar::all(-0.2), 5);
-        cv::circle(input_image, cv::Point(mouse.x, mouse.y), 20, cv::Scalar::all(0.4), 2);
+        cv::circle(cv_image[pres], cv::Point(mouse.x, mouse.y), 20, cv::Scalar::all(-0.2), 5);
+        cv::circle(cv_image[pres], cv::Point(mouse.x, mouse.y), 20, cv::Scalar::all(0.4), 2);
       }
       {
-        cv::imshow("input image", input_image);
+        cv::imshow("input image", cv_image[pres]);
         double min;
         double max;
-        cv::minMaxLoc(input_image, &min, &max, nullptr, nullptr);
-        double sum = cv::sum(input_image)[0];
+        cv::minMaxLoc(cv_image[pres], &min, &max, nullptr, nullptr);
+        double sum = cv::sum(cv_image[pres])[0];
         // ROS_INFO_STREAM(min << " " << max << " " << sum);
         const double sat = 10.0;
         if (max > sat)
-          input_image *= sat / max * 0.8;
+          cv_image[pres] *= sat / max * 0.8;
         if (min < -sat)
-          input_image *= sat / -min * 0.8;
-        cv::minMaxLoc(input_image, &min, &max, nullptr, nullptr);
-        sum = cv::sum(input_image)[0];
+          cv_image[pres] *= sat / -min * 0.8;
+        cv::minMaxLoc(cv_image[pres], &min, &max, nullptr, nullptr);
+        sum = cv::sum(cv_image[pres])[0];
         // ROS_INFO_STREAM(min << " " << max << " " << sum);
       }
       ch = cv::waitKey(5);
@@ -400,7 +391,6 @@ int main(int argc, char *argv[]) {
         break;
       if (ch == 'r') {
         ROS_INFO_STREAM("reset");
-        input_image = cv::Scalar::all(0);
         // TODO(lucasw) this doesn't effect the gpu buffers
         for (size_t i = 0; i < cv_image.size(); ++i)
           cv_image[i] = cv::Scalar::all(0);
@@ -415,7 +405,7 @@ int main(int argc, char *argv[]) {
       ROS_INFO_STREAM("output ");
       for (int i = 0; i < ht; i++) {
         for (int j = 0; j < wd; j++) {
-          std::cout << "   " << int(input_image.at<float>(wd, ht));
+          std::cout << "   " << int(cv_image[1].at<float>(wd, ht));
         }
         std::cout << std::endl;
       }
