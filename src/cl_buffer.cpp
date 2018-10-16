@@ -12,25 +12,20 @@
 void pressure(const cv::Mat& past,
               const cv::Mat& pres,
               cv::Mat& futu,
+              // std::vector<bool>& boundary,
+              std::unique_ptr<bool[]>& boundary,
               const int width, const int height) {
 
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
-      #if 0
-      float val = 0;
-      if (x > 0)
-        val += pres.at<float>(y, x - 1) / 2.0;
-      if (y > 0)
-        val += pres.at<float>(y - 1, x) / 2.0;
-      if (x < width - 1)
-        val += pres.at<float>(y, x + 1) / 2.0;
-      if (y < height - 1)
-        val += pres.at<float>(y + 1, x) / 2.0;
-      #endif
-      // TODO(lucasw) if there was an array of bools to indicate this
-      // that would be faster
-      if ((x == 0) || (y == 0) || (x == width - 1) || (y == height - 1))
+      // if ((x == 0) || (y == 0) || (x == width - 1) || (y == height - 1)) {
+      // this is a 5-10% faster than checks above
+      const int pos = y * width + x;
+      if (boundary[pos]) {
+        // TODO(lucasw) better stability?
+        // futu.at<float>(y, x) = pres.at<float>(y, x) * 0.1;
         continue;
+      }
 
       futu.at<float>(y, x) = (pres.at<float>(y, x - 1) +
                               pres.at<float>(y - 1, x) +
@@ -204,25 +199,44 @@ int main(int argc, char *argv[]) {
     int ht = 400;
     ros::param::get("~height", ht);
 
-    // for non gpu test
+    const int width = wd;
+    const int height = ht;
+
     std::array<cv::Mat, 3> cv_image;
     {
-      cv::Mat input_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
-      // cv::circle(input_image, cv::Point(wd/2, ht/2), 20, cv::Scalar::all(0.2), 3);
-      cv::Mat blank_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
+      cv::Mat input_image = cv::Mat(cv::Size(width, height), CV_32FC1, cv::Scalar::all(0));
+      // cv::circle(input_image, cv::Point(width/2, ht/2), 20, cv::Scalar::all(0.2), 3);
+      cv::Mat blank_image = cv::Mat(cv::Size(width, height), CV_32FC1, cv::Scalar::all(0));
       for (size_t i = 0; i < cv_image.size(); ++i) {
         cv_image[i] = blank_image.clone();
       }
       cv_image[1] = input_image.clone();
     }
 
-    size_t origin = 0;
-    size_t region = wd * ht * sizeof(float);
+    // or unique_ptr of bools
+    // std::vector<bool> boundary(width * height, false);
+    std::unique_ptr<bool[]> boundary;
+    boundary.reset(new bool[width * height]);
+    for (size_t y = 0; y < height; ++y) {
+      for (size_t x = 0; x < width; ++x) {
+        const size_t pos = y * width + x;
+        // TODO(lucasw) if there was an array of bools to indicate this
+        // that would be faster
+        if ((x == 0) || (y == 0) || (x == width - 1) || (y == height - 1)) {
+          // TODO(lucasw) better stability?
+          // futu.at<float>(y, x) = pres.at<float>(y, x) * 0.1;
+          boundary[pos] = true;
+        }
+      }
+    }
 
-    const size_t buffer_size = wd * ht * sizeof(float);
+    size_t origin = 0;
+    size_t region = width * height * sizeof(float);
+
+    const size_t buffer_size = width * height * sizeof(float);
     // past, present, future
     std::array<cl::Buffer, 3> cl_image;
-    ROS_INFO_STREAM(wd << " " << ht << " " << buffer_size);
+    ROS_INFO_STREAM(width << " " << height << " " << buffer_size);
     try {
       for (size_t i = 0; i < cl_image.size(); ++i) {
         cl_image[i] = cl::Buffer(context,
@@ -236,7 +250,7 @@ int main(int argc, char *argv[]) {
       return EXIT_FAILURE;
     }
 
-    cl::NDRange global_size(wd * ht);
+    cl::NDRange global_size(width * height);
     // local size doesn't mean much without having local memory
     // the null range causes automatic setting of local size,
     // and because the cpu has four cores it looks like it sets the
@@ -265,8 +279,8 @@ int main(int argc, char *argv[]) {
         kernels[i].setArg(0, cl_image[i]);
         kernels[i].setArg(1, cl_image[(i + 1) % kernels.size()]);
         kernels[i].setArg(2, cl_image[(i + 2) % kernels.size()]);
-        kernels[i].setArg(3, wd);
-        kernels[i].setArg(4, ht);
+        kernels[i].setArg(3, width);
+        kernels[i].setArg(4, height);
       }
     } catch (cl::Error err) {
       ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err()
@@ -277,8 +291,6 @@ int main(int argc, char *argv[]) {
     cv::imshow("input image", cv_image[1]);
     Mouse mouse;
     cv::setMouseCallback("input image", onMouse, &mouse);
-    // cv::Mat imt = cv::Mat(cv::Size(wd, ht), CV_8UC1, cv::Scalar::all(0));
-    // cv::imshow("processed image", imt);
     int ch = cv::waitKey(200);
 
     // clear all the images
@@ -346,7 +358,8 @@ int main(int argc, char *argv[]) {
           const int pres = (num + 1) % cv_image.size();
           const int futu = (num + 2) % cv_image.size();
           pressure(cv_image[past], cv_image[pres], cv_image[futu],
-                   wd, ht);
+                   boundary,
+                   width, height);
           num++;
           inner_loops++;
         }
@@ -356,8 +369,8 @@ int main(int argc, char *argv[]) {
       const int futu = (num + 2) % cv_image.size();
       ros::Time t1 = ros::Time::now();
       const float runs_per_sec = runs / (t1 - t0).toSec();
-      ROS_DEBUG_STREAM("runs per sec " << runs_per_sec << ", nodes per second "
-                       << wd * ht * runs_per_sec);
+      ROS_INFO_STREAM("runs per sec " << runs_per_sec << ", nodes per second "
+                      << width * height * runs_per_sec);
 
       if (save_images) {
         std::stringstream ss;
@@ -372,19 +385,21 @@ int main(int argc, char *argv[]) {
       }
       {
         cv::imshow("input image", cv_image[pres]);
-        double min;
-        double max;
-        cv::minMaxLoc(cv_image[pres], &min, &max, nullptr, nullptr);
-        double sum = cv::sum(cv_image[pres])[0];
-        // ROS_INFO_STREAM(min << " " << max << " " << sum);
-        const double sat = 10.0;
-        if (max > sat)
-          cv_image[pres] *= sat / max * 0.8;
-        if (min < -sat)
-          cv_image[pres] *= sat / -min * 0.8;
-        cv::minMaxLoc(cv_image[pres], &min, &max, nullptr, nullptr);
-        sum = cv::sum(cv_image[pres])[0];
-        // ROS_INFO_STREAM(min << " " << max << " " << sum);
+        for (size_t i = 0; i < cv_image.size(); ++i)
+        {
+          double min;
+          double max;
+          const double sat = 10.0;
+          cv::minMaxLoc(cv_image[i], &min, &max, nullptr, nullptr);
+          if (max > sat)
+            cv_image[i] *= (sat / max) * 0.5;
+          cv::minMaxLoc(cv_image[i], &min, &max, nullptr, nullptr);
+          if (min < -sat)
+            cv_image[i] *= (sat / -min) * 0.5;
+          // cv::minMaxLoc(cv_image[i], &min, &max, nullptr, nullptr);
+          // double sum = cv::sum(cv_image[i])[0];
+          // ROS_INFO_STREAM(min << " " << max << " " << sum);
+        }
       }
       ch = cv::waitKey(5);
       if (ch == 'q')
@@ -403,9 +418,9 @@ int main(int argc, char *argv[]) {
     #if 1
     if (false) {
       ROS_INFO_STREAM("output ");
-      for (int i = 0; i < ht; i++) {
-        for (int j = 0; j < wd; j++) {
-          std::cout << "   " << int(cv_image[1].at<float>(wd, ht));
+      for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+          std::cout << "   " << int(cv_image[1].at<float>(width, height));
         }
         std::cout << std::endl;
       }
