@@ -1,8 +1,6 @@
-// these produce build errors
-
-__kernel void pressure(__global uchar* past,
-                       __global uchar* pres,
-                       __global uchar* futu,
+__kernel void pressure(__global float* past,
+                       __global float* pres,
+                       __global float* futu,
                        int width, int height) {
   const int pos = get_global_id(0);
   const int x = pos % width;
@@ -14,13 +12,13 @@ __kernel void pressure(__global uchar* past,
 
   futu[pos] = 0;
   if (x > 0)
-    futu[pos] += pres[pos - 1] / 2;
+    futu[pos] += pres[pos - 1] / 2.0;
   if (y > 0)
-    futu[pos] += pres[pos - width] / 2;
+    futu[pos] += pres[pos - width] / 2.0;
   if (x < width - 1)
-    futu[pos] += pres[pos + 1] / 2;
+    futu[pos] += pres[pos + 1] / 2.0;
   if (y < height - 1)
-    futu[pos] += pres[pos + width] / 2;
+    futu[pos] += pres[pos + width] / 2.0;
 
   futu[pos] -= past[pos];
 };

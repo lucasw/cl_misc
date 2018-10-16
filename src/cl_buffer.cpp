@@ -135,11 +135,11 @@ int main(int argc, char *argv[]) {
     cl::Event event;
     cl::CommandQueue queue(context, devices[0], 0, &err);
 
-    const int wd = 256;
-    const int ht = 256;
-    cv::Mat input_image = cv::Mat(cv::Size(wd,ht), CV_8UC1, cv::Scalar::all(0));
-    cv::circle(input_image, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(55), 6);
-    cv::Mat blank_image = cv::Mat(cv::Size(wd,ht), CV_8UC1, cv::Scalar::all(0));
+    const int wd = 512;  // 256;
+    const int ht = 512;  // 256;
+    cv::Mat input_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
+    cv::circle(input_image, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(0.2), 3);
+    cv::Mat blank_image = cv::Mat(cv::Size(wd,ht), CV_32FC1, cv::Scalar::all(0));
 
 #if 0
     unsigned char im[wd * ht];
@@ -156,18 +156,17 @@ int main(int argc, char *argv[]) {
 #endif
 
     size_t origin = 0;
-    size_t region = wd * ht;
+    size_t region = wd * ht * sizeof(float);
 
-    const size_t size = wd * ht;
+    const size_t buffer_size = wd * ht * sizeof(float);
     // past, present, future
     std::array<cl::Buffer, 3> cl_image;
-    ROS_INFO_STREAM(wd << " " << ht);
+    ROS_INFO_STREAM(wd << " " << ht << " " << buffer_size);
     try {
       for (size_t i = 0; i < cl_image.size(); ++i) {
-        // std::vector<cl::Image2D>
         cl_image[i] = cl::Buffer(context,
                               0,  // CL_MEM_READ_ONLY, // | CL_MEM_COPY_HOST_PTR,
-                              size,  // TODO(lucasw) * sizeof(float) when using float
+                              buffer_size,  // TODO(lucasw) * sizeof(float) when using float
                               (void *)NULL, //(void*) &im, // some random memory
                               &err);
       }
@@ -242,17 +241,19 @@ int main(int argc, char *argv[]) {
 
     int count = 0;
     while (ros::ok()) {
-      ROS_INFO_STREAM("step " << count);
+      ROS_DEBUG_STREAM("step " << count);
       int num = 0;
-      for (size_t i = 0; i < kernels.size(); ++i) {
-        queue.enqueueNDRangeKernel(kernels[i % kernels.size()], offset,
-                                   global_size, local_size, NULL,
+      for (size_t i = 0; i < kernels.size() * 4; ++i) {
+      // for (size_t i = 0; i < 1; ++i) {
+        queue.enqueueNDRangeKernel(kernels[num % kernels.size()], offset,
+                                   global_size,  // * sizeof(float),
+                                   local_size, NULL,
                                    &event);
         queue.enqueueBarrierWithWaitList();
         num++;
         count++;
       }
-      queue.enqueueReadBuffer(cl_image[(count + 1) % cl_image.size()],
+      queue.enqueueReadBuffer(cl_image[(num + 1) % cl_image.size()],
                               CL_TRUE, // blocking read
                               origin, region,
                               input_image.data //_out //,
@@ -261,7 +262,7 @@ int main(int argc, char *argv[]) {
       );
 
       cv::imshow("input image", input_image);
-      ch = cv::waitKey(0);
+      ch = cv::waitKey(5);
       if (ch == 'q')
         break;
       if (ch == 'r') {
@@ -276,7 +277,7 @@ int main(int argc, char *argv[]) {
       ROS_INFO_STREAM("output ");
       for (int i = 0; i < ht; i++) {
         for (int j = 0; j < wd; j++) {
-          std::cout << "   " << int(input_image.at<char>(wd, ht));
+          std::cout << "   " << int(input_image.at<float>(wd, ht));
         }
         std::cout << std::endl;
       }
