@@ -138,7 +138,8 @@ int main(int argc, char *argv[]) {
     const int wd = 256;
     const int ht = 256;
     cv::Mat input_image = cv::Mat(cv::Size(wd,ht), CV_8UC1, cv::Scalar::all(0));
-    cv::circle(input_image, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(255), -1);
+    cv::circle(input_image, cv::Point(wd/2, ht/2), wd/3, cv::Scalar::all(55), 6);
+    cv::Mat blank_image = cv::Mat(cv::Size(wd,ht), CV_8UC1, cv::Scalar::all(0));
 
 #if 0
     unsigned char im[wd * ht];
@@ -158,7 +159,8 @@ int main(int argc, char *argv[]) {
     size_t region = wd * ht;
 
     const size_t size = wd * ht;
-    std::array<cl::Buffer, 2> cl_image;
+    // past, present, future
+    std::array<cl::Buffer, 3> cl_image;
     ROS_INFO_STREAM(wd << " " << ht);
     try {
       for (size_t i = 0; i < cl_image.size(); ++i) {
@@ -202,8 +204,9 @@ int main(int argc, char *argv[]) {
         kernels[i] = cl::Kernel(program, "pressure", &err);
         kernels[i].setArg(0, cl_image[i]);
         kernels[i].setArg(1, cl_image[(i + 1) % kernels.size()]);
-        kernels[i].setArg(2, wd);
-        kernels[i].setArg(3, ht);
+        kernels[i].setArg(2, cl_image[(i + 2) % kernels.size()]);
+        kernels[i].setArg(3, wd);
+        kernels[i].setArg(4, ht);
       }
     } catch (cl::Error err) {
       ROS_ERROR_STREAM("ERROR: " << err.what() << "(" << err.err()
@@ -216,25 +219,40 @@ int main(int argc, char *argv[]) {
     // cv::imshow("processed image", imt);
     int ch = cv::waitKey(0);
 
+    // clear all the images
+    for (size_t i = 0; i < cl_image.size(); ++i) {
+    queue.enqueueWriteBuffer(cl_image[0],
+                             CL_TRUE, // blocking write
+                             origin, region,
+                             blank_image.data //,
+                                      // NULL,
+                                      //&event
+    );
+    }
+    queue.enqueueBarrierWithWaitList();
+    // now write the circle to the 'present' buffer
+    queue.enqueueWriteBuffer(cl_image[1],
+                             CL_TRUE, // blocking write
+                             origin, region,
+                             input_image.data //,
+                                      // NULL,
+                                      //&event
+    );
+    queue.enqueueBarrierWithWaitList();
+
     int count = 0;
     while (ros::ok()) {
       ROS_INFO_STREAM("step " << count);
-      queue.enqueueWriteBuffer(cl_image[0],
-                               CL_TRUE, // blocking write
-                               origin, region,
-                               input_image.data //,
-                                        // NULL,
-                                        //&event
-      );
       int num = 0;
-      for (size_t i = 0; i < 10; ++i) {
+      for (size_t i = 0; i < kernels.size(); ++i) {
         queue.enqueueNDRangeKernel(kernels[i % kernels.size()], offset,
                                    global_size, local_size, NULL,
                                    &event);
         queue.enqueueBarrierWithWaitList();
         num++;
+        count++;
       }
-      queue.enqueueReadBuffer(cl_image[(num) % cl_image.size()],
+      queue.enqueueReadBuffer(cl_image[(count + 1) % cl_image.size()],
                               CL_TRUE, // blocking read
                               origin, region,
                               input_image.data //_out //,
@@ -244,10 +262,12 @@ int main(int argc, char *argv[]) {
 
       cv::imshow("input image", input_image);
       ch = cv::waitKey(0);
-      // if (ch == 'q')
-      //   break;
+      if (ch == 'q')
+        break;
+      if (ch == 'r') {
 
-      count++;
+      }
+
     } // for loop
 
     ////
